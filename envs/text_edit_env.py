@@ -7,7 +7,7 @@ from envs.actions import EditAction
 from envs.response_buffer import ResponseBuffer
 
 
-class TextEditEnv:
+class TextEditEnv1:
     def __init__(
         self,
         tokenizer,
