@@ -27,6 +27,8 @@ def eval_loss(model, ids, device):
 
 
 def train_loop(model, train_ids, valid_ids, device):
+    model.train()
+
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=config.LEARNING_RATE,
@@ -41,7 +43,7 @@ def train_loop(model, train_ids, valid_ids, device):
         optimizer.zero_grad()
         loss.backward()
 
-        if config.GRAD_CLIP:
+        if config.GRAD_CLIP is not None:
             torch.nn.utils.clip_grad_norm_(
                 model.parameters(), config.GRAD_CLIP
             )
