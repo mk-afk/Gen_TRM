@@ -54,3 +54,49 @@ DTYPE = "float32"
 # Logging
 # -------------------------
 LOG_EVERY = 1000
+
+
+
+# =================================================
+# Reinforcement Learning (Text Editing)
+# =================================================
+
+# -------------------------
+# RL environment
+# -------------------------
+NUM_EDIT_ACTIONS = 6        # MOVE_LEFT, MOVE_RIGHT, DELETE, INSERT, REPLACE, STOP
+MAX_BUFFER_LENGTH = 128     # max tokens in response buffer
+EDIT_WINDOW = 32            # local context window around cursor
+
+# -------------------------
+# RL training
+# -------------------------
+RL_EPISODES = 500           # number of episodes
+RL_MAX_STEPS = 40           # max edits per episode
+RL_LEARNING_RATE = 3e-4
+RL_GAMMA = 0.99             # discount factor
+RL_LOG_EVERY = 10
+
+# -------------------------
+# RL reward shaping
+# -------------------------
+REWARD_CONFIG = {
+    # language model likelihood improvement
+    "lm_weight": 1.0,
+
+    # penalty per edit step (encourages fewer edits)
+    "edit_penalty": 0.01,
+
+    # penalty per token in buffer (brevity)
+    "length_penalty": 0.01,
+
+    # bonus for STOP action when buffer is stable
+    "stop_bonus": 0.5,
+}
+
+# -------------------------
+# RL / TRM interaction
+# -------------------------
+FREEZE_TRM = True           # freeze TRM weights during RL
+UNFREEZE_TRM_AFTER = None   # e.g. 200 episodes, or None
+TRM_CHECKPOINT = None       # path to pretrained TRM LM (optional)
