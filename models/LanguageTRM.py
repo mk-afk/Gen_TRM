@@ -1,4 +1,4 @@
-from TRM import TRM
+from models.TRM import TRM
 import torch
 import torch.nn as nn
 

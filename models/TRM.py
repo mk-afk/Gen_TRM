@@ -1,4 +1,4 @@
-from tinyReasoning import TinyReasoningCore
+from models.tinyReasoning import TinyReasoningCore
 import torch
 import torch.nn as nn
 
