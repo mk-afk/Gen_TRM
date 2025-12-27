@@ -2,9 +2,6 @@ from TRM import TRM
 import torch
 import torch.nn as nn
 
-
-
-
 class LanguageTRM(nn.Module):
     def __init__(self, vocab_size, d_model=128, steps=6):
         super().__init__()
