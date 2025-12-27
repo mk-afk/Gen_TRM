@@ -1,22 +1,17 @@
 import torch.nn as nn
 
 class EditPolicy(nn.Module):
-    def __init__(self, trm, vocab_size, num_actions):
+    def __init__(self, trm_model, vocab_size, num_actions):
         super().__init__()
-        self.trm = trm
+        self.trm_model = trm_model
+        self.action_head = nn.Linear(trm_model.d_model, num_actions)
+        self.token_head = nn.Linear(trm_model.d_model, vocab_size)
 
-        self.cursor_emb = nn.Embedding(64, trm.d_model)  # small
-
-        self.action_head = nn.Linear(trm.d_model, num_actions)
-        self.token_head  = nn.Linear(trm.d_model, vocab_size)
-
-    def forward(self, tokens, cursor_pos=None):
-        h = self.trm(tokens)      # (T, D)
+    def forward(self, tokens):
+        # Ask explicitly for hidden states
+        h = self.trm_model(tokens, return_hidden=True)  # (T, D)
         h_last = h[-1]
 
-        if cursor_pos is not None:
-            h_last = h_last + self.cursor_emb(cursor_pos)
-
         action_logits = self.action_head(h_last)
-        token_logits  = self.token_head(h_last)
+        token_logits = self.token_head(h_last)
         return action_logits, token_logits

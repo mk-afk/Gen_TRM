@@ -12,10 +12,14 @@ class LanguageTRM(nn.Module):
         self.trm = TRM(d_model, steps)
         self.lm_head = nn.Linear(d_model, vocab_size)
 
-    def forward(self, tokens):
+    def forward(self, tokens, return_hidden=False):
         """
-        tokens: (T,) token window
+        tokens: (T,)
         """
         x = self.embed(tokens)      # (T, D)
         h = self.trm(x)             # (T, D)
-        return self.lm_head(h)      # (T, vocab)
+
+        if return_hidden:
+            return h                # ← latent states (128)
+
+        return self.lm_head(h)      # (T, vocab_size)
