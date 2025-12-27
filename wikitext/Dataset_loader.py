@@ -4,6 +4,7 @@ from datasets import load_dataset
 from transformers import AutoTokenizer
 import config
 
+
 # -------------------------
 # Tokenizer
 # -------------------------
@@ -14,6 +15,7 @@ if tokenizer.pad_token is None:
 
 config.VOCAB_SIZE = len(tokenizer)
 
+
 # -------------------------
 # Dataset
 # -------------------------
@@ -22,15 +24,28 @@ dataset = load_dataset(
     config.DATASET_CONFIG
 )
 
+
 def tokenize(example):
+    text = example[config.TEXT_FIELD]
+
+    # Skip empty lines explicitly
+    if not text or text.strip() == "":
+        return {"ids": []}
+
     return {
-        "ids": tokenizer(example[config.TEXT_FIELD])["input_ids"]
+        "ids": tokenizer(
+            text,
+            truncation=False,
+            add_special_tokens=False
+        )["input_ids"]
     }
+
 
 dataset = dataset.map(
     tokenize,
     remove_columns=[config.TEXT_FIELD],
 )
+
 
 # -------------------------
 # Flatten token stream
@@ -39,7 +54,10 @@ def flatten(split):
     ids = []
     for row in dataset[split]["ids"]:
         ids.extend(row)
-    return torch.tensor(ids, dtype=torch.long)
+
+    # Keep on CPU — training code moves batches to device
+    return torch.tensor(ids, dtype=torch.long, device="cpu")
+
 
 train_ids = flatten("train")
 valid_ids = flatten("validation")
