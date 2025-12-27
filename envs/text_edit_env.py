@@ -1,5 +1,5 @@
-from actions import EditAction
-from response_buffer import ResponseBuffer
+from envs.actions import EditAction
+from envs.response_buffer import ResponseBuffer
 
 def step(buffer: ResponseBuffer, action, token=None):
     buf = buffer.copy()
