@@ -23,13 +23,20 @@ class TextEditEnv:
     # Episode control
     # -------------------------
     def reset(self):
-        """
-        Initialize a fresh response buffer.
-        """
-        self.buffer = ResponseBuffer(tokens=[], cursor=0)
-        self.done = False
-        self.prev_score = 0.0
-        return self.buffer
+            """
+            Initialize a fresh response buffer with a BOS token
+            so the model always sees at least one token.
+            """
+            if self.tokenizer.bos_token_id is not None:
+                bos_id = self.tokenizer.bos_token_id
+            else:
+                # GPT-2 fallback
+                bos_id = self.tokenizer.eos_token_id
+
+            self.buffer = ResponseBuffer(tokens=[bos_id], cursor=1)
+            self.done = False
+            self.prev_score = 0.0
+            return self.buffer
 
     # -------------------------
     # State encoding
