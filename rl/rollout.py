@@ -2,12 +2,11 @@
 import torch
 from envs.actions import EditAction
 
-
 def valid_action_mask(buffer, device):
     mask = torch.ones(4, device=device, dtype=torch.bool)
-    # DELETE, ADD, REFINE, STOP
 
-    if len(buffer.tokens) <= 1:  # only BOS
+    # Never delete BOS
+    if buffer.cursor == 0:
         mask[EditAction.DELETE] = False
         mask[EditAction.REFINE] = False
 

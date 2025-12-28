@@ -14,12 +14,15 @@ class LanguageTRM(nn.Module):
 
     def forward(self, tokens, return_hidden=False):
         """
-        tokens: (T,)
+        tokens: (B, T) or (T,)
         """
-        x = self.embed(tokens)      # (T, D)
-        h = self.trm(x)             # (T, D)
+        if tokens.dim() == 1:
+            tokens = tokens.unsqueeze(0)
+
+        x = self.embed(tokens)        # (B, T, D)
+        h = self.trm(x)               # (B, T, D)
 
         if return_hidden:
-            return h                # ← latent states (128)
+            return h
 
-        return self.lm_head(h)      # (T, vocab_size)
+        return self.lm_head(h)
