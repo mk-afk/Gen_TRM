@@ -70,7 +70,7 @@ LOG_EVERY = 1_000
 # -------------------------
 # Environment
 # -------------------------
-NUM_EDIT_ACTIONS = 6                  # MOVE_L, MOVE_R, DELETE, INSERT, REPLACE, STOP
+NUM_EDIT_ACTIONS = 4                  # MOVE_L, MOVE_R, DELETE, INSERT, REPLACE, STOP
 MAX_BUFFER_LENGTH = 128               # max tokens in response buffer
 EDIT_WINDOW = 32                      # context window around cursor
 

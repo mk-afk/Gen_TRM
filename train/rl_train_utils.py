@@ -3,6 +3,22 @@ import torch
 from rl.rollout import collect_rollout
 from rl.reinforce import reinforce_update
 
+def valid_action_mask(buffer):
+    """
+    Returns a boolean mask of shape (num_actions,)
+    """
+    mask = torch.ones(4, dtype=torch.bool)  # DELETE, ADD, REFINE, STOP
+
+    if len(buffer.tokens) == 0:
+        mask[EditAction.DELETE] = False
+        mask[EditAction.REFINE] = False
+
+    if buffer.cursor >= len(buffer.tokens):
+        mask[EditAction.REFINE] = False
+
+    return mask
+
+
 
 def rl_train_loop(
     env,

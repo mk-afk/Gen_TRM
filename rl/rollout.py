@@ -3,6 +3,20 @@ import torch
 from envs.actions import EditAction
 
 
+def valid_action_mask(buffer, device):
+    mask = torch.ones(4, device=device, dtype=torch.bool)
+    # DELETE, ADD, REFINE, STOP
+
+    if len(buffer.tokens) <= 1:  # only BOS
+        mask[EditAction.DELETE] = False
+        mask[EditAction.REFINE] = False
+
+    if buffer.cursor >= len(buffer.tokens):
+        mask[EditAction.REFINE] = False
+
+    return mask
+
+
 def collect_rollout(
     env,
     policy,
@@ -19,38 +33,51 @@ def collect_rollout(
         "rewards": [],
         "actions": [],
         "tokens": [],
+        "entropies": [],
     }
 
     buffer = env.reset()
 
     for _ in range(max_steps):
         state = env.encode_state(buffer)
-        tokens = state["tokens"].to(device)
+        state_tokens = state["tokens"].to(device)
 
-        action_logits, token_logits = policy(tokens)
+        action_logits, token_logits = policy(state_tokens)
 
-        # sample action
-        action_dist = torch.distributions.Categorical(logits=action_logits)
+        # ---- ACTION MASKING ----
+        mask = valid_action_mask(buffer, device)
+        masked_action_logits = action_logits.clone()
+        masked_action_logits[~mask] = -1e9
+
+        action_dist = torch.distributions.Categorical(logits=masked_action_logits)
         action = action_dist.sample()
-        action_logprob = action_dist.log_prob(action)
+        action_id = action.item()
 
-        # sample token if needed
+        log_prob = action_dist.log_prob(action)
+        entropy = action_dist.entropy()
+
         token = None
         token_logprob = torch.tensor(0.0, device=device)
 
-        if action.item() in {EditAction.INSERT, EditAction.REPLACE}:
+        # Sample token if needed
+        if action_id in (EditAction.ADD, EditAction.REFINE):
+            token_logits = token_logits.clone()
+            token_logits[tokenizer.pad_token_id] = -1e9
+            if tokenizer.bos_token_id is not None:
+                token_logits[tokenizer.bos_token_id] = -1e9
+
             token_dist = torch.distributions.Categorical(logits=token_logits)
             token = token_dist.sample()
             token_logprob = token_dist.log_prob(token)
 
-        # environment step
-        buffer, reward, done = env.step(buffer, action.item(), token)
+        buffer, reward, done = env.step(buffer, action_id, token)
 
         # record
-        trajectory["log_probs"].append(action_logprob + token_logprob)
+        trajectory["log_probs"].append(log_prob + token_logprob)
         trajectory["rewards"].append(reward)
-        trajectory["actions"].append(action.item())
+        trajectory["actions"].append(action_id)
         trajectory["tokens"].append(token.item() if token is not None else None)
+        trajectory["entropies"].append(entropy)
 
         if done:
             break

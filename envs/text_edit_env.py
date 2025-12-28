@@ -1,6 +1,7 @@
 # envs/text_edit_env.py
 
 import torch
+import torch.nn.functional as F
 import config
 
 from envs.actions import EditAction
@@ -11,40 +12,47 @@ class TextEditEnv:
     def __init__(
         self,
         tokenizer,
+        model,          # LanguageTRM (or compatible LM)
+        device,
         max_length=128,
         reward_cfg=None,
     ):
         self.tokenizer = tokenizer
+        self.model = model
+        self.device = device
+
         self.max_length = max_length
         self.reward_cfg = reward_cfg or {}
+
         self.reset()
 
-    # -------------------------
+    # -------------------------------------------------
     # Episode control
-    # -------------------------
+    # -------------------------------------------------
     def reset(self):
-            """
-            Initialize a fresh response buffer with a BOS token
-            so the model always sees at least one token.
-            """
-            if self.tokenizer.bos_token_id is not None:
-                bos_id = self.tokenizer.bos_token_id
-            else:
-                # GPT-2 fallback
-                bos_id = self.tokenizer.eos_token_id
+        """
+        Initialize buffer with BOS so tokens are never empty.
+        """
+        bos_id = (
+            self.tokenizer.bos_token_id
+            if self.tokenizer.bos_token_id is not None
+            else self.tokenizer.eos_token_id
+        )
 
-            self.buffer = ResponseBuffer(tokens=[bos_id], cursor=1)
-            self.done = False
-            self.prev_score = 0.0
-            return self.buffer
+        self.buffer = ResponseBuffer(tokens=[bos_id], cursor=1)
+        self.done = False
 
-    # -------------------------
+        # Initial LM score
+        self.initial_score = self._lm_score(self.buffer.tokens)
+        self.prev_score = self.initial_score
+        self.has_improved = False
+
+        return self.buffer
+
+    # -------------------------------------------------
     # State encoding
-    # -------------------------
+    # -------------------------------------------------
     def encode_state(self, buffer):
-        """
-        Local window around cursor.
-        """
         window = config.EDIT_WINDOW
 
         start = max(0, buffer.cursor - window)
@@ -53,22 +61,21 @@ class TextEditEnv:
         tokens = buffer.tokens[start:end]
         cursor_pos = buffer.cursor - start
 
+        assert len(tokens) > 0, "Invariant violated: empty token state"
+
         return {
             "tokens": torch.tensor(tokens, dtype=torch.long),
             "cursor": cursor_pos,
+            "at_end": buffer.cursor >= len(buffer.tokens),
         }
 
-    # -------------------------
+    # -------------------------------------------------
     # Environment step
-    # -------------------------
+    # -------------------------------------------------
     def step(self, buffer, action, token=None):
-        """
-        Apply edit action and compute reward.
-        """
         if self.done:
             raise RuntimeError("Episode already terminated")
 
-        # Apply edit
         new_buffer = self._apply_edit(buffer, action, token)
 
         # Truncate if too long
@@ -78,60 +85,90 @@ class TextEditEnv:
                 new_buffer.cursor, len(new_buffer.tokens)
             )
 
-        # Compute reward
         reward = self.compute_reward(buffer, new_buffer, action)
 
-        # STOP action ends episode
         if action == EditAction.STOP:
             self.done = True
 
         self.buffer = new_buffer
         return new_buffer, reward, self.done
 
-    # -------------------------
-    # Edit logic (your code)
-    # -------------------------
+    # -------------------------------------------------
+    # Edit logic
+    # -------------------------------------------------
     def _apply_edit(self, buffer, action, token=None):
         buf = buffer.copy()
 
-        if action == EditAction.MOVE_LEFT:
-            buf.cursor = max(0, buf.cursor - 1)
-
-        elif action == EditAction.MOVE_RIGHT:
-            buf.cursor = min(len(buf.tokens), buf.cursor + 1)
-
-        elif action == EditAction.DELETE and buf.tokens:
-            if buf.cursor < len(buf.tokens):
+        # Never delete BOS
+        if action == EditAction.DELETE:
+            if buf.cursor > 0 and buf.cursor < len(buf.tokens):
                 del buf.tokens[buf.cursor]
 
-        elif action == EditAction.INSERT and token is not None:
+        elif action == EditAction.ADD and token is not None:
             buf.tokens.insert(buf.cursor, token)
             buf.cursor += 1
 
-        elif action == EditAction.REPLACE and token is not None:
+        elif action == EditAction.REFINE and token is not None:
             if buf.cursor < len(buf.tokens):
                 buf.tokens[buf.cursor] = token
+                buf.cursor += 1
 
         return buf
 
-    # -------------------------
-    # Reward function
-    # -------------------------
+    # -------------------------------------------------
+    # Reward function (FULLY INTEGRATED)
+    # -------------------------------------------------
     def compute_reward(self, old_buffer, new_buffer, action):
-        """
-        Simple shaped reward.
-        """
-
         reward = 0.0
 
-        # Penalty per edit
+        # --- LM improvement reward ---
+        new_score = self._lm_score(new_buffer.tokens)
+        diff = new_score - self.prev_score
+
+        reward += diff * self.reward_cfg.get("lm_weight", 1.0)
+
+        if diff > 0:
+            self.has_improved = True
+
+        self.prev_score = new_score
+
+        # --- Edit cost ---
         reward -= self.reward_cfg.get("edit_penalty", 0.0)
 
-        # Length penalty
-        reward -= self.reward_cfg.get("length_penalty", 0.0) * len(new_buffer.tokens)
+        # --- Length penalty ---
+        reward -= (
+            self.reward_cfg.get("length_penalty", 0.0)
+            * len(new_buffer.tokens)
+        )
 
-        # STOP bonus
+        # --- STOP gating ---
         if action == EditAction.STOP:
-            reward += self.reward_cfg.get("stop_bonus", 0.0)
+            if self.has_improved:
+                reward += self.reward_cfg.get("stop_bonus", 0.0)
+            else:
+                reward -= 0.1   # punish early STOP
 
         return reward
+
+    # -------------------------------------------------
+    # LM scoring (negative cross-entropy)
+    # -------------------------------------------------
+    def _lm_score(self, tokens):
+        if len(tokens) < 2:
+            return 0.0
+
+        t = torch.tensor(tokens, device=self.device).unsqueeze(0)
+
+        with torch.no_grad():
+            logits = self.model(t)               # (1, T, V)
+            shift_logits = logits[:, :-1, :]
+            shift_labels = t[:, 1:]
+
+            loss = F.cross_entropy(
+                shift_logits.reshape(-1, shift_logits.size(-1)),
+                shift_labels.reshape(-1),
+                reduction="mean",
+            )
+
+        # Higher is better
+        return -loss.item()
