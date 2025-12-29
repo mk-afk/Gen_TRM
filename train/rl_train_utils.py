@@ -3,6 +3,7 @@ import torch
 from rl.rollout import collect_rollout
 from rl.reinforce import reinforce_update
 
+
 def rl_train_loop(
     env,
     policy,
@@ -15,7 +16,7 @@ def rl_train_loop(
     log_every=10,
 ):
     """
-    High-level RL training loop (REINFORCE).
+    High-level RL training loop (Advantage REINFORCE / A2C-style).
     """
 
     policy.to(device)
@@ -38,7 +39,7 @@ def rl_train_loop(
         total_reward = sum(trajectory["rewards"])
         episode_rewards.append(total_reward)
 
-        # 2) Policy gradient update
+        # 2) Policy + Value update
         loss = reinforce_update(
             policy=policy,
             optimizer=optimizer,
