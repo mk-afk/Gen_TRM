@@ -94,7 +94,7 @@ REWARD_CONFIG = {
     "lm_weight": 1.0,
 
     # per-step cost (discourage endless edits)
-    "edit_penalty": 0.02,
+    "edit_penalty": 0.005,
 
     # length penalty (brevity bias)
     "length_penalty": 0.01,

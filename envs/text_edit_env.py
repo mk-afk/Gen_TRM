@@ -131,7 +131,11 @@ class TextEditEnv:
         new_score = self._lm_score(new_buffer.tokens)
         diff = new_score - self.prev_score
 
-        reward += diff * self.reward_cfg.get("lm_weight", 1.0)
+        lm_weight = self.reward_cfg.get("lm_weight", 1.0)
+
+        # scale LM improvement into PPO-friendly range
+        reward += lm_weight * torch.tanh(torch.tensor(diff * 10.0)).item()
+
 
         # Require meaningful improvement (noise guard)
         if diff > 1e-3:
@@ -143,10 +147,10 @@ class TextEditEnv:
         reward -= self.reward_cfg.get("edit_penalty", 0.0)
 
         # --- Length penalty ---
-        reward -= (
-            self.reward_cfg.get("length_penalty", 0.0)
-            * len(new_buffer.tokens)
-        )
+        length_penalty = self.reward_cfg.get("length_penalty", 0.0)
+        delta_len = len(new_buffer.tokens) - len(old_buffer.tokens)
+        reward -= length_penalty * max(0, delta_len)
+
 
         # --- STOP gating (time-aware, PPO-safe) ---
         if action == EditAction.STOP:
@@ -159,6 +163,16 @@ class TextEditEnv:
             else:
                 # Strong penalty for premature STOP
                 reward -= 0.2
+
+
+
+        print({
+            "diff": diff,
+            "len": len(new_buffer.tokens),
+            "reward": reward,
+            "action": action,
+        })
+
 
         return reward
 
