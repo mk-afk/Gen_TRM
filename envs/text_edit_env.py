@@ -29,28 +29,27 @@ class TextEditEnv:
     # -------------------------------------------------
     # Episode control
     # -------------------------------------------------
-    def reset(self):
-        """
-        Initialize buffer with BOS so tokens are never empty.
-        """
-        bos_id = (
-            self.tokenizer.bos_token_id
-            if self.tokenizer.bos_token_id is not None
-            else self.tokenizer.eos_token_id
-        )
+    def reset(self, prompt_ids=None):
+        if prompt_ids is None:
+            bos_id = (
+                self.tokenizer.bos_token_id
+                if self.tokenizer.bos_token_id is not None
+                else self.tokenizer.eos_token_id
+            )
+            tokens = [bos_id]
+        else:
+            tokens = prompt_ids.copy()
 
-        self.buffer = ResponseBuffer(tokens=[bos_id], cursor=1)
+        self.buffer = ResponseBuffer(tokens=tokens, cursor=len(tokens))
         self.done = False
 
-        # Initial LM score
         self.initial_score = self._lm_score(self.buffer.tokens)
         self.prev_score = self.initial_score
-
-        # STOP-gating state
         self.has_improved = False
         self.num_edits = 0
 
         return self.buffer
+
 
     # -------------------------------------------------
     # State encoding
