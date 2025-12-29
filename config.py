@@ -2,7 +2,7 @@
 Centralized configuration for:
 - TRM language modeling
 - TRM depth ablations
-- RL-based text editing
+- RL-based text editing (PPO)
 """
 
 # =================================================
@@ -15,7 +15,7 @@ SEED = 42
 # Dataset
 # =================================================
 DATASET_NAME = "wikitext"
-DATASET_CONFIG = "wikitext-2-v1"      # change to "wikitext-103-v1" later
+DATASET_CONFIG = "wikitext-2-v1"      # switch to "wikitext-103-v1" later
 TEXT_FIELD = "text"
 
 
@@ -70,15 +70,15 @@ LOG_EVERY = 1_000
 # -------------------------
 # Environment
 # -------------------------
-NUM_EDIT_ACTIONS = 4                  # MOVE_L, MOVE_R, DELETE, INSERT, REPLACE, STOP
+NUM_EDIT_ACTIONS = 4                  # ADD, REFINE, DELETE, STOP
 MAX_BUFFER_LENGTH = 128               # max tokens in response buffer
 EDIT_WINDOW = 32                      # context window around cursor
 
 
 # -------------------------
-# RL Training
+# RL Training (PPO)
 # -------------------------
-RL_EPISODES = 500
+RL_EPISODES = 3_000                   # 500 is too small for PPO
 RL_MAX_STEPS = 40                     # edits per episode
 RL_LEARNING_RATE = 3e-4
 RL_GAMMA = 0.99
@@ -89,23 +89,25 @@ RL_LOG_EVERY = 10
 # Reward Shaping
 # -------------------------
 REWARD_CONFIG = {
-    # LM likelihood improvement (added later)
+    # LM likelihood improvement
+    # ASSUMES: per-token Δ log-prob, normalized by length
     "lm_weight": 1.0,
 
     # per-step cost (discourage endless edits)
-    "edit_penalty": 0.01,
+    "edit_penalty": 0.02,
 
     # length penalty (brevity bias)
     "length_penalty": 0.01,
 
     # reward for deciding to STOP
-    "stop_bonus": 0.5,
+    # keep low initially to avoid early STOP collapse
+    "stop_bonus": 0.1,
 }
 
 
 # =================================================
 # TRM ↔ RL Interaction
 # =================================================
-FREEZE_TRM = True                     # freeze TRM during RL initially
-UNFREEZE_TRM_AFTER = None             # e.g. 200 episodes, or None
+FREEZE_TRM = True                     # freeze TRM during RL
+UNFREEZE_TRM_AFTER = None             # set (e.g., 1000) only for ablations
 TRM_CHECKPOINT = None                 # path to pretrained TRM LM

@@ -45,7 +45,10 @@ class TextEditEnv:
         # Initial LM score
         self.initial_score = self._lm_score(self.buffer.tokens)
         self.prev_score = self.initial_score
+
+        # STOP-gating state
         self.has_improved = False
+        self.num_edits = 0
 
         return self.buffer
 
@@ -87,7 +90,10 @@ class TextEditEnv:
 
         reward = self.compute_reward(buffer, new_buffer, action)
 
-        if action == EditAction.STOP:
+        # Track edit count
+        if action != EditAction.STOP:
+            self.num_edits += 1
+        else:
             self.done = True
 
         self.buffer = new_buffer
@@ -116,7 +122,7 @@ class TextEditEnv:
         return buf
 
     # -------------------------------------------------
-    # Reward function (FULLY INTEGRATED)
+    # Reward function (PPO-safe, STOP-aware)
     # -------------------------------------------------
     def compute_reward(self, old_buffer, new_buffer, action):
         reward = 0.0
@@ -127,7 +133,8 @@ class TextEditEnv:
 
         reward += diff * self.reward_cfg.get("lm_weight", 1.0)
 
-        if diff > 0:
+        # Require meaningful improvement (noise guard)
+        if diff > 1e-3:
             self.has_improved = True
 
         self.prev_score = new_score
@@ -141,12 +148,17 @@ class TextEditEnv:
             * len(new_buffer.tokens)
         )
 
-        # --- STOP gating ---
+        # --- STOP gating (time-aware, PPO-safe) ---
         if action == EditAction.STOP:
-            if self.has_improved:
-                reward += self.reward_cfg.get("stop_bonus", 0.0)
+            stop_bonus = self.reward_cfg.get("stop_bonus", 0.0)
+
+            # Require both improvement AND sufficient edits
+            if self.has_improved and self.num_edits >= 3:
+                scale = min(1.0, self.num_edits / 5)
+                reward += stop_bonus * scale
             else:
-                reward -= 0.1   # punish early STOP
+                # Strong penalty for premature STOP
+                reward -= 0.2
 
         return reward
 
