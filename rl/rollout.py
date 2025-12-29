@@ -2,6 +2,7 @@
 import torch
 from envs.actions import EditAction
 
+
 def valid_action_mask(buffer, device, step, min_edits=3):
     mask = torch.ones(4, device=device, dtype=torch.bool)
 
@@ -21,7 +22,6 @@ def valid_action_mask(buffer, device, step, min_edits=3):
     return mask
 
 
-
 def collect_rollout(
     env,
     policy,
@@ -31,16 +31,19 @@ def collect_rollout(
 ):
     """
     PPO-compatible rollout collection.
+    Stores TRM hidden states (pre-action) for critic.
     """
 
     trajectory = {
         "states": [],
+        "tokens": [],
         "actions": [],
         "old_log_probs": [],
         "rewards": [],
         "dones": [],
         "entropies": [],
     }
+
 
     buffer = env.reset()
 
@@ -50,10 +53,11 @@ def collect_rollout(
 
         # ---- policy forward (sampling mode) ----
         with torch.no_grad():
-            out = policy(state_tokens)
+            out = policy(state_tokens, return_hidden=True)
 
         action_logits = out["action_logits"]
         token_logits = out["token_logits"]
+        hidden_state = out["hidden_states"]    # (D,)
 
         # ---- ACTION MASKING ----
         mask = valid_action_mask(buffer, device, step)
@@ -70,7 +74,6 @@ def collect_rollout(
         # ---- EXTRA STOP ENTROPY BONUS ----
         if action_id == EditAction.STOP:
             entropy = entropy + 0.5
-
 
         token = None
         token_logprob = torch.tensor(0.0, device=device)
@@ -91,7 +94,10 @@ def collect_rollout(
         buffer, reward, done = env.step(buffer, action_id, token)
 
         # ---- RECORD (CRITICAL) ----
-        trajectory["states"].append(state_tokens)
+        trajectory["states"].append(hidden_state.detach())
+        trajectory["tokens"].append(state_tokens.detach().clone())
+
+
         trajectory["actions"].append({
             "action": action,
             "token": token,
@@ -105,7 +111,7 @@ def collect_rollout(
             break
 
     # ---- STACK ----
-    for k in ["states", "old_log_probs", "rewards", "entropies"]:
+    for k in ["states", "tokens", "old_log_probs", "rewards", "entropies"]:
         trajectory[k] = torch.stack(trajectory[k])
 
     trajectory["dones"] = torch.tensor(

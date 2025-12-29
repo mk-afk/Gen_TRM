@@ -11,14 +11,17 @@ class EditPolicy(nn.Module):
 
         self.action_head = nn.Linear(self.d_model, num_actions)
         self.token_head  = nn.Linear(self.d_model, vocab_size)
-        self.value_head  = nn.Linear(self.d_model, 1)   # <-- NEW
 
-    def forward(self, tokens):
+    def forward(self, tokens, return_hidden=False):
         """
         tokens:
           (T,) or (B, T)
+
         returns:
-          action_logits, token_logits, value
+          dict with:
+            action_logits
+            token_logits
+            hidden_states (optional)
         """
 
         is_batched = tokens.dim() == 2
@@ -31,11 +34,17 @@ class EditPolicy(nn.Module):
 
         action_logits = self.action_head(h_last)
         token_logits  = self.token_head(h_last)
-        value         = self.value_head(h_last).squeeze(-1)  # (B,)
+
+        out = {
+            "action_logits": action_logits,
+            "token_logits": token_logits,
+        }
+
+        if return_hidden:
+            out["hidden_states"] = h_last
 
         if not is_batched:
-            action_logits = action_logits.squeeze(0)
-            token_logits  = token_logits.squeeze(0)
-            value         = value.squeeze(0)
+            for k in out:
+                out[k] = out[k].squeeze(0)
 
-        return action_logits, token_logits, value
+        return out
