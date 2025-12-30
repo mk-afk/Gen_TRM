@@ -40,7 +40,7 @@ def ppo_update(
 
     # ---- recompute policy distributions ----
     for t, state in enumerate(states):
-        out = policy.trm.project_from_hidden(state.unsqueeze(0))
+        out = policy(tokens_t, return_hidden=False)
         action_logits = policy.action_head(out).squeeze(0)
         token_logits  = policy.token_head(out).squeeze(0)
 
