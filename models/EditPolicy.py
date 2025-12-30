@@ -8,43 +8,40 @@ class EditPolicy(nn.Module):
         super().__init__()
         self.trm = trm_model
         self.d_model = trm_model.d_model
-
         self.action_head = nn.Linear(self.d_model, num_actions)
         self.token_head  = nn.Linear(self.d_model, vocab_size)
 
     def forward(self, tokens, return_hidden=False):
-        """
-        tokens:
-          (T,) or (B, T)
+        if tokens.dim() == 1:
+            tokens = tokens.unsqueeze(0)
 
-        returns:
-          dict with:
-            action_logits
-            token_logits
-            hidden_states (optional)
-        """
+        # ---- TRM FORWARD (NO FLAGS) ----
+        out = self.trm(tokens)
 
-        is_batched = tokens.dim() == 2
-        if not is_batched:
-            tokens = tokens.unsqueeze(0)  # (1, T)
+        # CASE 1: TRM returns (logits, hidden)
+        if isinstance(out, tuple):
+            _, h = out
+        else:
+            raise RuntimeError(
+                "TRM must return (logits, hidden_states). "
+                "Modify LanguageTRM, not the policy."
+            )
 
-        # TRM returns (B, T, D)
-        h = self.trm(tokens, return_hidden=True)
-        h_last = h[:, -1, :]              # (B, D)
+        h_last = h[:, -1, :]  # (B, D)
 
         action_logits = self.action_head(h_last)
         token_logits  = self.token_head(h_last)
 
-        out = {
+        result = {
             "action_logits": action_logits,
             "token_logits": token_logits,
         }
 
         if return_hidden:
-            out["hidden_states"] = h_last
+            result["hidden_states"] = h_last
 
-        if not is_batched:
-            for k in out:
-                out[k] = out[k].squeeze(0)
+        if result["action_logits"].shape[0] == 1:
+            for k in result:
+                result[k] = result[k].squeeze(0)
 
-        return out
+        return result
