@@ -55,21 +55,48 @@ class TextEditEnv:
     # State encoding
     # -------------------------------------------------
     def encode_state(self, buffer):
-        window = config.EDIT_WINDOW
+        """
+        Encode environment state as a FIXED-LENGTH token window.
+        This is REQUIRED for PPO stability.
+        """
 
+        window = getattr(config, "EDIT_WINDOW", 32)
+        max_len = window * 2
+
+        # --- window selection ---
         start = max(0, buffer.cursor - window)
         end = buffer.cursor + window
-
         tokens = buffer.tokens[start:end]
-        cursor_pos = buffer.cursor - start
 
-        assert len(tokens) > 0, "Invariant violated: empty token state"
+        # --- convert to tensor ---
+        t = torch.tensor(tokens, dtype=torch.long, device=self.device)
+
+        # --- HARD CLAMP (critical for CUDA safety) ---
+        vocab_size = self.model.vocab_size
+        t = torch.clamp(t, 0, vocab_size - 1)
+
+        # --- pad / truncate to fixed length ---
+        if t.numel() < max_len:
+            pad_len = max_len - t.numel()
+            pad_val = (
+                self.tokenizer.eos_token_id
+                if self.tokenizer.eos_token_id is not None
+                else 0
+            )
+            pad_val = min(pad_val, vocab_size - 1)
+            t = torch.nn.functional.pad(t, (0, pad_len), value=pad_val)
+        else:
+            t = t[:max_len]
+
+        # --- cursor relative to window ---
+        cursor_pos = buffer.cursor - start
+        cursor_pos = max(0, min(cursor_pos, max_len - 1))
 
         return {
-            "tokens": torch.tensor(tokens, dtype=torch.long),
+            "tokens": t,          # (2 * EDIT_WINDOW,)
             "cursor": cursor_pos,
-            "at_end": buffer.cursor >= len(buffer.tokens),
         }
+
 
     # -------------------------------------------------
     # Environment step
