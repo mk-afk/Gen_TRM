@@ -12,16 +12,12 @@ class ValueNet(nn.Module):
             nn.Tanh(),
             nn.Linear(d_model, 1),
         )
-
+            
     def forward(self, hidden_states):
-        """
-        hidden_states: (T, D) or (B, T, D)
-        returns: (T,) or (B, T)
-        """
         if hidden_states.dim() == 3:
-            # use last token (pre-action state)
             h = hidden_states[:, -1, :]
-        else:
+        elif hidden_states.dim() == 2:
             h = hidden_states[-1]
-
+        else:
+            h = hidden_states
         return self.value_head(h).squeeze(-1)
