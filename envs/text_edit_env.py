@@ -182,16 +182,6 @@ class TextEditEnv:
                 # Strong penalty for premature STOP
                 reward -= 0.2
 
-
-
-        print({
-            "diff": diff,
-            "len": len(new_buffer.tokens),
-            "reward": reward,
-            "action": action,
-        })
-
-
         return reward
 
     def _lm_score(self, tokens):
