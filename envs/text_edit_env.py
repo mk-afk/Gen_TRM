@@ -56,47 +56,39 @@ class TextEditEnv:
     # -------------------------------------------------
     def encode_state(self, buffer):
         """
-        Encode environment state as a FIXED-LENGTH token window.
-        This is REQUIRED for PPO stability.
+        FIXED-LENGTH state encoding (PPO-safe).
+        This EXACTLY matches the working monkey patch.
         """
 
-        window = getattr(config, "EDIT_WINDOW", 32)
-        max_len = window * 2
+        window_size = getattr(config, "EDIT_WINDOW", 32)
+        max_len = window_size * 2
 
-        # --- window selection ---
-        start = max(0, buffer.cursor - window)
-        end = buffer.cursor + window
-        tokens = buffer.tokens[start:end]
+        # Extract window
+        start = max(0, buffer.cursor - window_size)
+        end = buffer.cursor + window_size
+        chunk = buffer.tokens[start:end]
 
-        # --- convert to tensor ---
-        t = torch.tensor(tokens, dtype=torch.long, device=self.device)
+        # IMPORTANT: CPU tensor (rollout handles .to(device))
+        t = torch.tensor(chunk, dtype=torch.long)
 
-        # --- HARD CLAMP (critical for CUDA safety) ---
-        vocab_size = self.model.vocab_size
-        t = torch.clamp(t, 0, vocab_size - 1)
-
-        # --- pad / truncate to fixed length ---
-        if t.numel() < max_len:
-            pad_len = max_len - t.numel()
+        # Pad / truncate to fixed length
+        if len(t) < max_len:
+            pad_len = max_len - len(t)
             pad_val = (
                 self.tokenizer.eos_token_id
                 if self.tokenizer.eos_token_id is not None
                 else 0
             )
-            pad_val = min(pad_val, vocab_size - 1)
             t = torch.nn.functional.pad(t, (0, pad_len), value=pad_val)
         else:
             t = t[:max_len]
 
-        # --- cursor relative to window ---
         cursor_pos = buffer.cursor - start
-        cursor_pos = max(0, min(cursor_pos, max_len - 1))
 
         return {
-            "tokens": t,          # (2 * EDIT_WINDOW,)
+            "tokens": t,      # ALWAYS (max_len,)
             "cursor": cursor_pos,
         }
-
 
     # -------------------------------------------------
     # Environment step
