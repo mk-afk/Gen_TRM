@@ -13,16 +13,11 @@ class EditPolicy(nn.Module):
         self.token_head  = nn.Linear(self.d_model, vocab_size)
 
     def forward(self, tokens, return_hidden=False):
-        """
-        tokens: (B, T) or (T,)
-        returns: dict
-        """
         if tokens.dim() == 1:
             tokens = tokens.unsqueeze(0)
 
-        # ALWAYS request hidden states explicitly
-        h = self.trm(tokens, return_hidden=True)   # (B, T, D)
-        h_last = h[:, -1, :]                        # (B, D)
+        h = self.trm(tokens, return_hidden=True)
+        h_last = h[:, -1, :]
 
         action_logits = self.action_head(h_last)
         token_logits  = self.token_head(h_last)
@@ -35,9 +30,10 @@ class EditPolicy(nn.Module):
         if return_hidden:
             out["hidden_states"] = h_last
 
-        # Unbatch for convenience
-        if out["action_logits"].shape[0] == 1:
+        # unbatch
+        if action_logits.shape[0] == 1:
             for k in out:
                 out[k] = out[k].squeeze(0)
 
         return out
+

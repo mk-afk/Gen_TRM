@@ -34,7 +34,11 @@ def train_bc(
             token_tgt = token_tgt.to(device)
 
             optimizer.zero_grad()
-            action_logits, token_logits = policy(context)
+
+            # ---- FIX: dict-based policy output ----
+            out = policy(context)
+            action_logits = out["action_logits"]
+            token_logits  = out["token_logits"]
 
             loss = (
                 F.cross_entropy(action_logits, action_tgt)
