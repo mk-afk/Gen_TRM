@@ -114,12 +114,13 @@ def collect_rollout(
         if done:
             break
 
-    # ---- STACK ----
-    for k in ["states", "tokens", "old_log_probs", "rewards", "entropies","action_masks"]:
+    # ---- STACK ONLY FIXED-SIZE TENSORS ----
+    for k in ["states", "old_log_probs", "rewards", "entropies"]:
         trajectory[k] = torch.stack(trajectory[k])
 
     trajectory["dones"] = torch.tensor(
         trajectory["dones"], device=device, dtype=torch.bool
     )
+
 
     return trajectory
