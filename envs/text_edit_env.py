@@ -179,21 +179,26 @@ class TextEditEnv:
     # LM scoring (negative cross-entropy)
     # -------------------------------------------------
     def _lm_score(self, tokens):
-        if len(tokens) < 2:
+        """
+        Compute negative log-likelihood score of token sequence
+        """
+        t = torch.tensor(tokens, dtype=torch.long, device=self.device).unsqueeze(0)
+
+        # Need at least 2 tokens
+        if t.size(1) < 2:
             return 0.0
 
-        t = torch.tensor(tokens, device=self.device).unsqueeze(0)
-
         with torch.no_grad():
-            logits, _ = self.model(t)   # <-- CORRECT: unpack tuple
+            out = self.model(t)                 # <-- dict
+            logits = out["logits"]              # (1, T, V)
+
             shift_logits = logits[:, :-1, :]
             shift_labels = t[:, 1:]
 
-            loss = F.cross_entropy(
+            loss = torch.nn.functional.cross_entropy(
                 shift_logits.reshape(-1, shift_logits.size(-1)),
                 shift_labels.reshape(-1),
                 reduction="mean",
             )
 
-        # Higher is better
         return -loss.item()
