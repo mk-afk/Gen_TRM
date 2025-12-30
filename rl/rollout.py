@@ -96,9 +96,18 @@ def collect_rollout(
         buffer, reward, done = env.step(buffer, action_id, token)
 
         # ---- RECORD (CRITICAL) ----
-        trajectory["states"].append(hidden_state.detach().squeeze())
-        trajectory["tokens"].append(state_tokens.detach().clone())
-        trajectory["action_masks"].append(mask.clone().detach())
+        trajectory["old_log_probs"].append(
+            (log_prob + token_logprob).detach().view(1)
+        )
+
+        trajectory["rewards"].append(
+            torch.tensor(reward, device=device).view(1)
+        )
+
+        trajectory["entropies"].append(
+            entropy.detach().view(1)
+        )
+
 
 
 
@@ -113,6 +122,12 @@ def collect_rollout(
 
         if done:
             break
+    
+    for k in ["states", "old_log_probs", "rewards", "entropies"]:
+        for i, t in enumerate(trajectory[k]):
+            assert torch.is_tensor(t), f"{k}[{i}] not tensor"
+            assert t.dim() in (1,), f"{k}[{i}] has shape {t.shape}"
+
 
     # ---- STACK ONLY FIXED-SIZE TENSORS ----
     for k in ["states", "old_log_probs", "rewards", "entropies"]:
