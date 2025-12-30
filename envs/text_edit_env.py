@@ -175,26 +175,34 @@ class TextEditEnv:
 
         return reward
 
-    # -------------------------------------------------
-    # LM scoring (negative cross-entropy)
-    # -------------------------------------------------
     def _lm_score(self, tokens):
         """
         Compute negative log-likelihood score of token sequence
         """
-        # ---- HARD NORMALIZATION (CRITICAL FIX) ----
-        if isinstance(tokens, tuple):
-            tokens = list(tokens)
-        if isinstance(tokens, torch.Tensor):
-            tokens = tokens.tolist()
+
+        # ---- HARD NORMALIZATION (FINAL FIX) ----
+        def flatten_tokens(x):
+            if isinstance(x, torch.Tensor):
+                return x.view(-1).tolist()
+            if isinstance(x, (list, tuple)):
+                out = []
+                for v in x:
+                    out.extend(flatten_tokens(v))
+                return out
+            # scalar
+            return [int(x)]
+
+        tokens = flatten_tokens(tokens)
+
+        t = torch.tensor(tokens, dtype=torch.long, device=self.device).unsqueeze(0)
 
         # Need at least 2 tokens
         if t.size(1) < 2:
             return 0.0
 
         with torch.no_grad():
-            out = self.model(t)                 # <-- dict
-            logits = out["logits"]              # (1, T, V)
+            out = self.model(t)
+            logits = out["logits"]
 
             shift_logits = logits[:, :-1, :]
             shift_labels = t[:, 1:]
@@ -206,3 +214,4 @@ class TextEditEnv:
             )
 
         return -loss.item()
+
