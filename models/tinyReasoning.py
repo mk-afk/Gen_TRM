@@ -17,7 +17,8 @@ class TinyReasoningCore(nn.Module):
 
     def forward(self, h, x):
         """
-        h: (B, D) reasoning state
-        x: (B, D) fixed input embedding
+        h: (B, T, D)
+        x: (B, T, D)
         """
+
         return self.net(torch.cat([h, x], dim=-1))
