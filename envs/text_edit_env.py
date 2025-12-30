@@ -182,7 +182,11 @@ class TextEditEnv:
         """
         Compute negative log-likelihood score of token sequence
         """
-        t = torch.tensor(tokens, dtype=torch.long, device=self.device).unsqueeze(0)
+        # ---- HARD NORMALIZATION (CRITICAL FIX) ----
+        if isinstance(tokens, tuple):
+            tokens = list(tokens)
+        if isinstance(tokens, torch.Tensor):
+            tokens = tokens.tolist()
 
         # Need at least 2 tokens
         if t.size(1) < 2:
