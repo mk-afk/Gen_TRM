@@ -14,13 +14,13 @@ class EditPolicy(nn.Module):
 
     def forward(self, tokens, return_hidden=False):
         """
-        tokens: (T,) or (B, T)
+        tokens: (B, T) or (T,)
         returns: dict
         """
         if tokens.dim() == 1:
             tokens = tokens.unsqueeze(0)
 
-        # ---- CORRECT TRM CALL ----
+        # ALWAYS request hidden states explicitly
         h = self.trm(tokens, return_hidden=True)   # (B, T, D)
         h_last = h[:, -1, :]                        # (B, D)
 
@@ -35,7 +35,7 @@ class EditPolicy(nn.Module):
         if return_hidden:
             out["hidden_states"] = h_last
 
-        # Unbatch if needed
+        # Unbatch for convenience
         if out["action_logits"].shape[0] == 1:
             for k in out:
                 out[k] = out[k].squeeze(0)
