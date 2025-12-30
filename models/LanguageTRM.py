@@ -12,20 +12,14 @@ class LanguageTRM(nn.Module):
         self.embed = nn.Embedding(vocab_size, d_model)
         self.trm = TRM(d_model, steps)
         self.lm_head = nn.Linear(d_model, vocab_size)
-
+        
     def forward(self, tokens):
-        """
-        tokens: (B, T) or (T,)
-        returns dict with:
-          - logits: (B, T, V)
-          - hidden: (B, T, D)
-        """
         if tokens.dim() == 1:
             tokens = tokens.unsqueeze(0)
 
-        x = self.embed(tokens)        # (B, T, D)
-        h = self.trm(x)               # (B, T, D)
-        logits = self.lm_head(h)      # (B, T, V)
+        x = self.embed(tokens)
+        h = self.trm(x)
+        logits = self.lm_head(h)
 
         return {
             "logits": logits,
