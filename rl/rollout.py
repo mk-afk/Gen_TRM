@@ -96,7 +96,7 @@ def collect_rollout(
         buffer, reward, done = env.step(buffer, action_id, token)
 
         # ---- RECORD (CRITICAL) ----
-        trajectory["states"].append(hidden_state.detach())
+        trajectory["states"].append(hidden_state.detach().squeeze())
         trajectory["tokens"].append(state_tokens.detach().clone())
         trajectory["action_masks"].append(mask.clone().detach())
 
