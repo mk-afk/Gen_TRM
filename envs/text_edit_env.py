@@ -185,8 +185,7 @@ class TextEditEnv:
         t = torch.tensor(tokens, device=self.device).unsqueeze(0)
 
         with torch.no_grad():
-            out = self.model(t)
-            logits = out["logits"]
+            logits, _ = self.model(t)   # <-- CORRECT: unpack tuple
             shift_logits = logits[:, :-1, :]
             shift_labels = t[:, 1:]
 
