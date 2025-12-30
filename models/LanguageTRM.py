@@ -1,3 +1,4 @@
+# models/LanguageTRM.py
 from models.TRM import TRM
 import torch.nn as nn
 
@@ -12,17 +13,21 @@ class LanguageTRM(nn.Module):
         self.trm = TRM(d_model, steps)
         self.lm_head = nn.Linear(d_model, vocab_size)
 
-    def forward(self, tokens, return_hidden=False):
+    def forward(self, tokens):
         """
         tokens: (B, T) or (T,)
+        returns dict with:
+          - logits: (B, T, V)
+          - hidden: (B, T, D)
         """
         if tokens.dim() == 1:
             tokens = tokens.unsqueeze(0)
 
         x = self.embed(tokens)        # (B, T, D)
         h = self.trm(x)               # (B, T, D)
+        logits = self.lm_head(h)      # (B, T, V)
 
-        if return_hidden:
-            return h
-        logits = self.lm_head(h)
-        return logits, h
+        return {
+            "logits": logits,
+            "hidden": h,
+        }
