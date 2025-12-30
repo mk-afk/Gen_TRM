@@ -38,11 +38,13 @@ def collect_rollout(
         "states": [],
         "tokens": [],
         "actions": [],
+        "action_masks": [],   # <-- ADD
         "old_log_probs": [],
         "rewards": [],
         "dones": [],
         "entropies": [],
     }
+
 
 
     buffer = env.reset()
@@ -96,6 +98,8 @@ def collect_rollout(
         # ---- RECORD (CRITICAL) ----
         trajectory["states"].append(hidden_state.detach())
         trajectory["tokens"].append(state_tokens.detach().clone())
+        trajectory["action_masks"].append(mask.clone().detach())
+
 
 
         trajectory["actions"].append({
@@ -111,7 +115,7 @@ def collect_rollout(
             break
 
     # ---- STACK ----
-    for k in ["states", "tokens", "old_log_probs", "rewards", "entropies"]:
+    for k in ["states", "tokens", "old_log_probs", "rewards", "entropies","action_masks"]:
         trajectory[k] = torch.stack(trajectory[k])
 
     trajectory["dones"] = torch.tensor(

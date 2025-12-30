@@ -14,7 +14,6 @@ def compute_returns(rewards, dones, gamma):
         returns.insert(0, R)
     return torch.stack(returns)
 
-
 def ppo_update(
     policy,
     value_fn,
@@ -25,11 +24,13 @@ def ppo_update(
     value_coef=0.5,
     entropy_coef=0.01,
 ):
-    states = trajectory["states"]            # (T, D)
-    actions = trajectory["actions"]          # list of dicts
+    tokens = trajectory["tokens"]                  # (T, L)
+    states = trajectory["states"]                  # (T, D)
+    actions = trajectory["actions"]                # list[dict]
+    action_masks = trajectory["action_masks"]      # (T, A)
     rewards = trajectory["rewards"]
     dones = trajectory["dones"]
-    old_log_probs = trajectory["old_log_probs"]
+    old_log_probs = trajectory["old_log_probs"]    # (T,)
 
     # ---- returns ----
     returns = compute_returns(rewards, dones, gamma)
@@ -38,23 +39,32 @@ def ppo_update(
     log_probs = []
     entropies = []
 
-    # ---- recompute policy distributions ----
-    for t, state in enumerate(states):
-        out = policy(tokens_t, return_hidden=False)
-        action_logits = policy.action_head(out).squeeze(0)
-        token_logits  = policy.token_head(out).squeeze(0)
+    for t in range(len(tokens)):
+        # --- policy forward ---
+        out = policy(tokens[t], return_hidden=False)
+        action_logits = out["action_logits"]
+        token_logits  = out["token_logits"]
 
-        action = actions[t]["action"]
+        action = actions[t]["action"].to(action_logits.device).long()
         token  = actions[t]["token"]
 
-        action_dist = torch.distributions.Categorical(logits=action_logits)
+        # ---- action masking (CRITICAL) ----
+        mask = action_masks[t]
+        masked_logits = action_logits.clone()
+        masked_logits[~mask] = -1e9
+
+        if not torch.isfinite(masked_logits).any():
+            masked_logits = torch.zeros_like(masked_logits)
+
+        action_dist = torch.distributions.Categorical(logits=masked_logits)
         logp = action_dist.log_prob(action)
         entropy = action_dist.entropy()
 
-        # STOP entropy bonus
+        # ---- STOP entropy shaping ----
         if action.item() == EditAction.STOP:
             entropy = entropy + 0.5
 
+        # ---- token distribution ----
         if action.item() in (EditAction.ADD, EditAction.REFINE):
             token_dist = torch.distributions.Categorical(logits=token_logits)
             logp = logp + token_dist.log_prob(token)
@@ -69,6 +79,7 @@ def ppo_update(
     # ---- KL guard ----
     with torch.no_grad():
         kl = (old_log_probs - log_probs).mean()
+
     if kl > 0.02:
         return {
             "loss": 0.0,
@@ -79,13 +90,13 @@ def ppo_update(
         }
 
     # ---- value function ----
-    values = value_fn(states)
+    values = value_fn(states).squeeze(-1)
 
-    # ---- advantage ----
+    # ---- advantages ----
     advantages = returns - values.detach()
     advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-    # ---- PPO ratio ----
+    # ---- PPO objective ----
     ratio = torch.exp(log_probs - old_log_probs)
     clipped_ratio = torch.clamp(ratio, 1 - clip_eps, 1 + clip_eps)
 
@@ -94,10 +105,7 @@ def ppo_update(
         clipped_ratio * advantages
     ).mean()
 
-    # ---- value loss (Huber) ----
     value_loss = F.smooth_l1_loss(values, returns)
-
-    # ---- entropy bonus ----
     entropy_loss = -entropies.mean()
 
     total_loss = (
