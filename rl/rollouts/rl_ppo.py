@@ -1,7 +1,7 @@
 # rl/rollout_ppo.py
 import torch
 from envs.actions import EditAction
-from rl.rollout import valid_action_mask
+from rl.rollouts.rollout import valid_action_mask
 
 
 def collect_rollout_ppo(
