@@ -55,40 +55,30 @@ class TextEditEnv:
     # State encoding
     # -------------------------------------------------
     def encode_state(self, buffer):
-        """
-        FIXED-LENGTH state encoding (PPO-safe).
-        This EXACTLY matches the working monkey patch.
-        """
-
         window_size = getattr(config, "EDIT_WINDOW", 32)
         max_len = window_size * 2
 
-        # Extract window
         start = max(0, buffer.cursor - window_size)
-        end = buffer.cursor + window_size
+        end   = buffer.cursor + window_size
         chunk = buffer.tokens[start:end]
 
-        # IMPORTANT: CPU tensor (rollout handles .to(device))
         t = torch.tensor(chunk, dtype=torch.long)
 
-        # Pad / truncate to fixed length
+        # clamp
+        vocab_size = self.model.vocab_size
+        t = torch.clamp(t, 0, vocab_size - 1)
+
         if len(t) < max_len:
-            pad_len = max_len - len(t)
-            pad_val = (
-                self.tokenizer.eos_token_id
-                if self.tokenizer.eos_token_id is not None
-                else 0
-            )
-            t = torch.nn.functional.pad(t, (0, pad_len), value=pad_val)
+            pad_val = self.tokenizer.eos_token_id or 0
+            t = F.pad(t, (0, max_len - len(t)), value=pad_val)
         else:
             t = t[:max_len]
 
-        cursor_pos = buffer.cursor - start
-
         return {
-            "tokens": t,      # ALWAYS (max_len,)
-            "cursor": cursor_pos,
+            "tokens": t,
+            "cursor": buffer.cursor - start,
         }
+
 
     # -------------------------------------------------
     # Environment step

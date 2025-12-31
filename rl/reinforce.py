@@ -20,28 +20,30 @@ def compute_returns(rewards, gamma):
 
 def reinforce_update(
     policy,
+    value_fn,
     optimizer,
     trajectory,
     gamma,
 ):
-    """
-    Advantage-based REINFORCE (A2C-style)
-    """
-
-    rewards = trajectory["rewards"]
+    rewards   = trajectory["rewards"]
     log_probs = trajectory["log_probs"]
-    values = trajectory["values"]
+    states    = trajectory["states"]   # fixed-length hidden states
 
-    returns = compute_returns(rewards, gamma).to(values.device)
+    # ---- compute returns ----
+    returns = compute_returns(rewards, gamma).to(log_probs.device)
 
-    # Normalize returns for stability
-    if returns.numel() > 1:
-        returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+    # ---- value estimates ----
+    values = value_fn(states).view(-1)
+    returns = returns.view(-1)
 
-    # Advantage
+    # ---- advantage (UNNORMALIZED) ----
     advantage = returns - values.detach()
 
-    # Losses
+    # ---- normalize advantage (NOT returns) ----
+    if advantage.numel() > 1:
+        advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
+
+    # ---- losses ----
     policy_loss = -(log_probs * advantage).sum()
     value_loss  = F.mse_loss(values, returns)
 
@@ -51,4 +53,9 @@ def reinforce_update(
     loss.backward()
     optimizer.step()
 
-    return loss.item()
+    return {
+        "loss": loss.item(),
+        "policy": policy_loss.item(),
+        "value": value_loss.item(),
+    }
+

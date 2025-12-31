@@ -12,31 +12,22 @@ class EditPolicy(nn.Module):
         self.action_head = nn.Linear(self.d_model, num_actions)
         self.token_head  = nn.Linear(self.d_model, vocab_size)
 
-    def forward(self, tokens, return_hidden=False):
+    def forward(self, tokens):
         if tokens.dim() == 1:
             tokens = tokens.unsqueeze(0)
 
-        # LanguageTRM ALWAYS returns a dict
         out = self.trm(tokens)
-        h = out["hidden"]                 # (B, T, D)
-        h_last = h[:, -1, :]              # (B, D)
+        h = out["hidden"]
+        h_last = h[:, -1, :]
 
         action_logits = self.action_head(h_last)
         token_logits  = self.token_head(h_last)
 
-        result = {
-            "action_logits": action_logits,
-            "token_logits": token_logits,
+        return {
+            "action_logits": action_logits.squeeze(0),
+            "token_logits": token_logits.squeeze(0),
+            "hidden_states": h_last.squeeze(0),
         }
 
-        if return_hidden:
-            result["hidden_states"] = h_last
-
-        # Unbatch for convenience
-        if action_logits.shape[0] == 1:
-            for k in result:
-                result[k] = result[k].squeeze(0)
-
-        return result
 
 
