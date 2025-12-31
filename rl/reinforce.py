@@ -4,10 +4,6 @@ import torch.nn.functional as F
 
 
 def compute_returns(rewards, gamma):
-    """
-    rewards: list[float]
-    returns: tensor (T,)
-    """
     R = 0.0
     returns = []
 
@@ -24,22 +20,22 @@ def reinforce_update(
     optimizer,
     trajectory,
     gamma,
+    entropy_coef=0.01,
 ):
     rewards   = trajectory["rewards"]
     log_probs = trajectory["log_probs"]
-    states    = trajectory["states"]   # fixed-length hidden states
+    states    = trajectory["states"]
+    entropies = trajectory.get("entropies", None)
 
-    # ---- compute returns ----
+    # ---- returns ----
     returns = compute_returns(rewards, gamma).to(log_probs.device)
 
     # ---- value estimates ----
     values = value_fn(states).view(-1)
     returns = returns.view(-1)
 
-    # ---- advantage (UNNORMALIZED) ----
+    # ---- advantage ----
     advantage = returns - values.detach()
-
-    # ---- normalize advantage (NOT returns) ----
     if advantage.numel() > 1:
         advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
 
@@ -49,8 +45,13 @@ def reinforce_update(
 
     loss = policy_loss + 0.5 * value_loss
 
+    if entropies is not None:
+        entropy_loss = -entropies.mean()
+        loss = loss + entropy_coef * entropy_loss
+
     optimizer.zero_grad()
     loss.backward()
+    torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
     optimizer.step()
 
     return {
@@ -58,4 +59,3 @@ def reinforce_update(
         "policy": policy_loss.item(),
         "value": value_loss.item(),
     }
-

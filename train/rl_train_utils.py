@@ -48,9 +48,10 @@ def rl_train_loop(
         )
     else:
         optimizer = torch.optim.Adam(
-            list(policy.parameters()),
+            list(policy.parameters()) + list(value_fn.parameters()),
             lr=lr,
         )
+
 
     episode_rewards = []
 
@@ -98,10 +99,12 @@ def rl_train_loop(
         else:  # reinforce / A2C
             stats = reinforce_update(
                 policy=policy,
+                value_fn=value_fn,          # ← ADD THIS
                 optimizer=optimizer,
                 trajectory=trajectory,
                 gamma=gamma,
             )
+
 
         # ======================================================
         # 3. LOGGING
