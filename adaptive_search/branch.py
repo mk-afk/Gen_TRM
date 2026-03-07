@@ -1,11 +1,65 @@
-from dataclasses import dataclass
+from __future__ import annotations
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional, Tuple, Callable
 import torch
+
+CarryCopyFn = Optional[Callable[[Any], Any]]
+
+def default_clone_carry(carry: Any) -> Any:
+    """Safe-ish generic carry cloning for common structures."""
+    if carry is None:
+        return None
+    if torch.is_tensor(carry):
+        return carry.detach().clone()
+    if isinstance(carry, (tuple, list)):
+        return type(carry)(default_clone_carry(x) for x in carry)
+    if isinstance(carry, dict):
+        return {k: default_clone_carry(v) for k, v in carry.items()}
+    if hasattr(carry, "clone"):
+        try:
+            return carry.clone()
+        except TypeError:
+            pass
+    # Fallback: last resort shallow copy (warn-worthy)
+    return carry
 
 @dataclass
 class Branch:
-    tokens: torch.Tensor
-    score: float
-    length: int
+    tokens: torch.LongTensor          # [T]
+    carry: Any                        # TRM carry object (per-branch!)
+    value: float = float("-inf")      # Φ / verifier score
 
-    def key(self):
-        return tuple(self.tokens.tolist())
+    logp: float = 0.0
+
+    steps: int = 0
+    cost: float = 0.0
+
+    meta: Dict[str, Any] = field(default_factory=dict)
+
+    def clone(self, carry_copy_fn: CarryCopyFn = None, strict: bool = True) -> "Branch":
+        tokens_copy = self.tokens.detach().clone()
+
+        if carry_copy_fn is not None:
+            carry_copy = carry_copy_fn(self.carry)
+        else:
+            if strict:
+                # Force you to think about carry copying.
+                # Flip strict=False if you really want generic cloning.
+                raise ValueError("Branch.clone called without carry_copy_fn; this can alias carry.")
+            carry_copy = default_clone_carry(self.carry)
+
+        return Branch(
+            tokens=tokens_copy,
+            carry=carry_copy,
+            value=float(self.value),
+            logp=float(self.logp),
+            steps=int(self.steps),
+            cost=float(self.cost),
+            meta=dict(self.meta),
+        )
+
+    def key(self, suffix_len: int = 256) -> bytes:
+        """Fast dedup key using last tokens (bytes, not tuple)."""
+        t = self.tokens[-suffix_len:].contiguous()
+        # Move to cpu only for hashing; tobytes is fast.
+        return t.detach().to("cpu").numpy().tobytes()
