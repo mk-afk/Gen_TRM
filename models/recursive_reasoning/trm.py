@@ -19,6 +19,15 @@ class TinyRecursiveReasoningModel_ACTV1InnerCarry:
     z_L: torch.Tensor
 
 
+    def clone(self):
+        return TinyRecursiveReasoningModel_ACTV1InnerCarry(
+            z_H=self.z_H.clone(),
+            z_L=self.z_L.clone(),
+        )
+
+    def state_key(self):
+        return hash((self.z_H.data_ptr(), self.z_L.data_ptr()))
+
 @dataclass
 class TinyRecursiveReasoningModel_ACTV1Carry:
     inner_carry: TinyRecursiveReasoningModel_ACTV1InnerCarry
@@ -192,7 +201,35 @@ class TinyRecursiveReasoningModel_ACTV1_Inner(nn.Module):
             z_H=torch.where(reset_flag.view(-1, 1, 1), self.H_init, carry.z_H),
             z_L=torch.where(reset_flag.view(-1, 1, 1), self.L_init, carry.z_L),
         )
+    
+    @torch.no_grad()
+    def proposal_step(self, carry, batch):
+        """Single deep recursion step for the search controller.
+        Returns carry, z_H, z_L, logits (no ACT, no training logic)."""
+        seq_info = dict(
+            cos_sin=self.rotary_emb() if hasattr(self, "rotary_emb") else None,
+        )
+        input_embeddings = self._input_embeddings(batch["inputs"], batch["puzzle_identifiers"])
+        z_H, z_L = carry.z_H, carry.z_L
+        for _H_step in range(self.config.H_cycles):
+            for _L_step in range(self.config.L_cycles):
+                z_L = self.L_level(z_L, z_H + input_embeddings, **seq_info)
+            z_H = self.L_level(z_H, z_L, **seq_info)
+        new_carry = TinyRecursiveReasoningModel_ACTV1InnerCarry(
+            z_H=z_H.detach(), z_L=z_L.detach()
+        )
+        logits = self.lm_head(z_H)[:, self.puzzle_emb_len:]
+        return new_carry, z_H.detach(), z_L.detach(), logits
 
+    def get_features(self, carry):
+        L = self.puzzle_emb_len
+        # Puzzle prefix features (task identity)
+        puzzle_feat = carry.z_H[:, :L].mean(dim=1)   # [B, D]
+        # Sequence features (reasoning state)
+        y_pooled = carry.z_H[:, L:].mean(dim=1)      # [B, D]
+        z_pooled = carry.z_L[:, L:].mean(dim=1)      # [B, D]
+        return torch.cat([puzzle_feat, y_pooled, z_pooled], dim=-1)  # [B, 3*D]
+    
     def forward(self, carry: TinyRecursiveReasoningModel_ACTV1InnerCarry, batch: Dict[str, torch.Tensor]) -> Tuple[TinyRecursiveReasoningModel_ACTV1InnerCarry, torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         seq_info = dict(
             cos_sin=self.rotary_emb() if hasattr(self, "rotary_emb") else None,

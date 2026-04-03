@@ -25,7 +25,8 @@ def default_clone_carry(carry: Any) -> Any:
 
 @dataclass
 class Branch:
-    tokens: torch.LongTensor          # [T]
+    batch: Dict[str, torch.Tensor]   # shared input (same for all branches on one problem)
+    output: torch.LongTensor          # argmax(lm_head(z_H)), the current decoded answer
     carry: Any                        # TRM carry object (per-branch!)
     value: float = float("-inf")      # Φ / verifier score
 
