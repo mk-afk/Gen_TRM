@@ -1,78 +1,57 @@
 # adaptive_search/collect_rollouts.py
 
 from typing import List, Tuple
-import copy
 import torch
 
-from .branch import Branch
+from .branch import Branch, default_clone_carry
 from .delta_features import delta_features
-from .search_loop import adaptive_search
+from .search_loop import frontier_search
 
 
 @torch.no_grad()
 def collect_delta_rollout(
     *,
     trm,
-    delta_net,
     branches: List[Branch],
-    puzzle_identifier: torch.Tensor,
-    max_len: int,
-    compute_cost: float,
-    branch_k: int,
+    budget_segments: int,
+    max_frontier: int,
+    branch_m: int,
     device: torch.device,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Collect ONE Δ̂ training example from a snapshot of branches.
 
     Returns:
-        features: FloatTensor [B, D]
+        features: FloatTensor [B, 3]
         targets:  FloatTensor [B]
     """
 
-    # -------------------------------
-    # Snapshot current state
-    # -------------------------------
-
+    # Snapshot current state (independent carries so the rollout doesn't
+    # mutate the caller's branches).
     snapshot_branches = [
-        Branch(
-            tokens=b.tokens.clone(),
-            score=b.score,
-            length=b.length,
-        )
+        b.clone(carry_copy_fn=default_clone_carry, strict=False)
         for b in branches
     ]
 
-    # Baseline: STOP now
-    baseline_score = max(b.score for b in snapshot_branches)
+    # Baseline: best value if we stopped right now.
+    baseline_value = max(b.value for b in snapshot_branches)
 
-    # -------------------------------
-    # Run full adaptive search forward
-    # -------------------------------
-
-    best_branch = adaptive_search(
+    # Run full frontier search forward from the best snapshot branch.
+    best_snapshot = max(snapshot_branches, key=lambda b: b.value)
+    best_branch = frontier_search(
         trm=trm,
-        delta_net=delta_net,
-        initial_tokens=snapshot_branches[0].tokens,
-        puzzle_identifier=puzzle_identifier,
-        max_len=max_len,
-        compute_cost=compute_cost,
-        branch_k=branch_k,
-        device=device,
+        batch=best_snapshot.batch,
+        budget_segments=budget_segments,
+        max_frontier=max_frontier,
+        branch_m=branch_m,
+        initial_carry=best_snapshot.carry,
     )
 
-    final_score = best_branch.score
+    delta_target = best_branch.value - baseline_value
 
-    # -------------------------------
-    # Δ̂ target (same for all branches)
-    # -------------------------------
-
-    delta_target = final_score - baseline_score
-
-    # -------------------------------
-    # Build training tensors
-    # -------------------------------
-
-    features = delta_features(snapshot_branches, max_len, device=device)
+    # Build training tensors.
+    budget_remaining = float(budget_segments)
+    features = delta_features(snapshot_branches, budget_remaining, device=device)
     targets = torch.full(
         (features.shape[0],),
         delta_target,

@@ -7,7 +7,7 @@ from .branch import Branch
 
 def delta_features(
     branches: List[Branch],
-    max_len: int,
+    budget_remaining: float,
     device: torch.device | None = None,
 ) -> torch.Tensor:
     """
@@ -16,29 +16,30 @@ def delta_features(
     Args:
         branches:
             List of Branch objects
-        max_len:
-            Maximum allowed sequence length
+        budget_remaining:
+            Remaining compute budget (segments), used for normalised length.
         device:
             Optional torch.device
 
     Returns:
         features: FloatTensor [B, 3]
             Columns:
-              0: normalized length
-              1: current score
-              2: score gap vs best
+              0: normalised steps (steps / (steps + budget_remaining))
+              1: current value
+              2: value gap vs best branch
     """
 
     assert len(branches) > 0, "No branches provided"
 
-    best_score = max(b.score for b in branches)
+    best_value = max(b.value for b in branches)
 
     feats = []
     for b in branches:
+        normalised_steps = b.steps / (b.steps + budget_remaining + 1e-8)
         feats.append([
-            b.length / max_len,
-            b.score,
-            b.score - best_score,
+            normalised_steps,
+            b.value,
+            b.value - best_value,
         ])
 
     features = torch.tensor(feats, dtype=torch.float32)

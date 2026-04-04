@@ -38,7 +38,7 @@ class Branch:
     meta: Dict[str, Any] = field(default_factory=dict)
 
     def clone(self, carry_copy_fn: CarryCopyFn = None, strict: bool = True) -> "Branch":
-        tokens_copy = self.tokens.detach().clone()
+        output_copy = self.output.detach().clone()
 
         if carry_copy_fn is not None:
             carry_copy = carry_copy_fn(self.carry)
@@ -50,7 +50,8 @@ class Branch:
             carry_copy = default_clone_carry(self.carry)
 
         return Branch(
-            tokens=tokens_copy,
+            batch=self.batch,
+            output=output_copy,
             carry=carry_copy,
             value=float(self.value),
             logp=float(self.logp),
@@ -59,8 +60,6 @@ class Branch:
             meta=dict(self.meta),
         )
 
-    def key(self, suffix_len: int = 256) -> bytes:
-        """Fast dedup key using last tokens (bytes, not tuple)."""
-        t = self.tokens[-suffix_len:].contiguous()
-        # Move to cpu only for hashing; tobytes is fast.
-        return t.detach().to("cpu").numpy().tobytes()
+    def key(self) -> bytes:
+        """Content-based dedup key over the full decoded output grid."""
+        return self.output.detach().to("cpu").contiguous().numpy().tobytes()

@@ -26,7 +26,9 @@ class TinyRecursiveReasoningModel_ACTV1InnerCarry:
         )
 
     def state_key(self):
-        return hash((self.z_H.data_ptr(), self.z_L.data_ptr()))
+        h = hash(self.z_H.detach().cpu().to(torch.float32).contiguous().numpy().tobytes())
+        l = hash(self.z_L.detach().cpu().to(torch.float32).contiguous().numpy().tobytes())
+        return hash((h, l))
 
 @dataclass
 class TinyRecursiveReasoningModel_ACTV1Carry:
